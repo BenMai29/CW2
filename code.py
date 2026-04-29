@@ -1,3 +1,13 @@
+"""
+Outputs (all written next to the script):
+  bifurcation_period.pdf     — Fig. 4 in report
+  timeseries_three.pdf       — Fig. 2 in report
+  timeseries_k.pdf           — Fig. 3 in report
+  phase_planes_three.pdf     — Fig. 1 in report
+  two_param_hopf.pdf         — Fig. 5 in report
+  encoding.pdf               — Fig. 6 in report
+
+"""
 
 import numpy as np
 import matplotlib
@@ -334,45 +344,73 @@ print(f"    {len(betas_lc)} LC points,  β ∈ [{betas_lc.min():.3f}, {betas_lc.
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  FIG. 1 — PHASE PLANES AT THREE β VALUES                                 ║
+# ║                                                                          ║
+# ║  β values match the time-series figure exactly (centre and right         ║
+# ║  panels), and include a quiver flow field — both improvements address    ║
+# ║  coursework feedback that phase-plane β values should match the          ║
+# ║  simulations and that quiver plots are an explicit option in the brief.  ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 print("\n[Fig 1] phase_planes_three.pdf …")
 
-def make_phase_plane(ax, beta, title):
+def make_phase_plane(ax, beta, title, ic_list):
     Zg = np.linspace(0.001, 2.0, 500)
     Yg = np.linspace(0.001, 2.0, 500)
     ZZ, YY = np.meshgrid(Zg, Yg)
     F1 = v0 + v1*beta - v2f(ZZ) + v3f(ZZ, YY) + kf*YY - K_DEFAULT*ZZ
     F2 = v2f(ZZ) - v3f(ZZ, YY) - kf*YY
-    ax.contour(ZZ, YY, F1, levels=[0], colors="tab:blue", linewidths=1.8)
-    ax.contour(ZZ, YY, F2, levels=[0], colors="tab:red",  linewidths=1.8)
-    # Trajectories
-    for ic, col in zip([(0.05, 0.5), (1.5, 0.3), (0.3, 1.7)],
-                       ["#2ca02c", "#ff7f0e", "#9467bd"]):
+
+    # Quiver — sparse normalised flow field
+    Zq = np.linspace(0.05, 2.0, 18)
+    Yq = np.linspace(0.05, 2.0, 18)
+    Zqq, Yqq = np.meshgrid(Zq, Yq)
+    Uq = v0 + v1*beta - v2f(Zqq) + v3f(Zqq, Yqq) + kf*Yqq - K_DEFAULT*Zqq
+    Vq = v2f(Zqq) - v3f(Zqq, Yqq) - kf*Yqq
+    M  = np.hypot(Uq, Vq); M[M < 1e-12] = 1e-12
+    ax.quiver(Zqq, Yqq, Uq/M, Vq/M, M, cmap="Greys", scale=32,
+              width=0.0035, alpha=0.55, pivot="middle",
+              headwidth=3.5, headlength=4)
+
+    # Nullclines
+    ax.contour(ZZ, YY, F1, levels=[0], colors="tab:blue", linewidths=2)
+    ax.contour(ZZ, YY, F2, levels=[0], colors="tab:red",  linewidths=2)
+
+    # Trajectories from three initial conditions
+    for ic, col in zip(ic_list, ["#2ca02c", "#ff7f0e", "#9467bd"]):
         sol = solve_ivp(rhs, [0, 60], list(ic), args=(beta,), method="LSODA",
                         rtol=1e-8, atol=1e-10, max_step=0.01, dense_output=True)
         t = np.linspace(0, 60, 4000)
         Zs, Ys = sol.sol(t)
-        ax.plot(Zs, Ys, color=col, lw=0.9, alpha=0.85)
+        ax.plot(Zs, Ys, color=col, lw=1.0, alpha=0.9)
         ax.plot(Zs[-1], Ys[-1], marker=">", color=col, markersize=6)
-    # Fixed point
+
+    # Fixed point — filled (stable) or open (unstable)
     Zfp, Yfp = steady_state_closed(beta)
     tr = np.trace(jacobian(Zfp, Yfp))
     if tr < 0:
-        ax.plot(Zfp, Yfp, "ko", markersize=10, markerfacecolor="black")
+        ax.plot(Zfp, Yfp, "ko", markersize=10, markerfacecolor="black", zorder=10)
     else:
-        ax.plot(Zfp, Yfp, "ko", markersize=10, markerfacecolor="white")
+        ax.plot(Zfp, Yfp, "ko", markersize=10, markerfacecolor="white",
+                markeredgewidth=1.5, zorder=10)
     ax.set_xlim(0, 2.0); ax.set_ylim(0, 2.0)
-    ax.set_xlabel(r"$Z$ ($\mu$M)")
-    ax.set_ylabel(r"$Y$ ($\mu$M)")
-    ax.set_title(title)
-    ax.legend([plt.Line2D([0],[0],color="tab:blue",lw=1.8),
-               plt.Line2D([0],[0],color="tab:red", lw=1.8)],
-              [r"$\dot{Z}=0$", r"$\dot{Y}=0$"], loc="upper right", fontsize=8)
+    ax.set_xlabel(r"$Z$ ($\mu$M, cytosolic)")
+    ax.set_ylabel(r"$Y$ ($\mu$M, store)")
+    ax.set_title(title, fontsize=11)
+    legend = ax.legend([plt.Line2D([0],[0],color="tab:blue",lw=2),
+                        plt.Line2D([0],[0],color="tab:red", lw=2)],
+                       [r"$\dot{Z}=0$", r"$\dot{Y}=0$"],
+                       loc="upper right", fontsize=8, framealpha=0.92)
+    legend.set_zorder(20)
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 4.6))
-make_phase_plane(axes[0], 0.20, r"$\beta=0.20$ (below window)")
-make_phase_plane(axes[1], 0.40, r"$\beta=0.40$ (oscillatory)")
-make_phase_plane(axes[2], 0.80, r"$\beta=0.80$ (above window)")
+fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.8))
+make_phase_plane(axes[0], 0.20,
+                 r"$\beta=0.20$ (sub-window): stable focus, low Ca$^{2+}$ rest",
+                 [(0.05, 0.5), (1.5, 0.3), (0.3, 1.7)])
+make_phase_plane(axes[1], 0.301,
+                 r"$\beta=0.301$ (oscillatory): unstable focus, stable limit cycle",
+                 [(0.05, 0.5), (1.5, 0.3), (0.3, 1.9)])
+make_phase_plane(axes[2], 0.74,
+                 r"$\beta=0.74$ (near upper Hopf): small-amplitude limit cycle",
+                 [(0.1, 0.4), (1.5, 0.4), (0.3, 1.5)])
 fig.tight_layout()
 fig.savefig("phase_planes_three.pdf", bbox_inches="tight")
 plt.close(fig)
